@@ -261,7 +261,7 @@ const DATA: Record<string, { monthly: number[]; quarterly: number[]; regional: R
     byTier: { Enterprise: 2680000, "Mid-Market": 1250000, SMB: 670000 },
   },
   gross_margin: {
-    monthly: generateMonthlyData(42, 03, -0.5),
+    monthly: generateMonthlyData(42, 3, -0.5),
     quarterly: [43.2, 42.5, 41.8, 40.9],
     regional: { "North America": 44.1, "Europe": 39.2, "Asia-Pacific": 41.5, "Latin America": 38.7 },
     byCategory: { Electronics: 38.5, SaaS: 72.3, Consulting: 55.1, Hardware: 28.4 },
