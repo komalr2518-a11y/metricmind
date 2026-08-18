@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "outDir": ".test-dist",
+    "rootDir": ".",
+    "target": "ES2022"
+  },
+  "include": [
+    "lib/metricmind/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    ".test-dist"
+  ]
+}
