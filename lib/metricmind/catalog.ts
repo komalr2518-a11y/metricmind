@@ -13,6 +13,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "customer_tier", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "sum",
+    favorableDirection: "up",
   },
   {
     id: "gross_margin",
@@ -27,6 +28,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "date"],
     compatibleCharts: ["line", "bar"],
     summaryOperation: "average",
+    favorableDirection: "up",
   },
   {
     id: "net_profit",
@@ -40,6 +42,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "sum",
+    favorableDirection: "up",
   },
   {
     id: "churn_rate",
@@ -53,6 +56,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "customer_tier", "date"],
     compatibleCharts: ["line", "bar"],
     summaryOperation: "average",
+    favorableDirection: "down",
   },
   {
     id: "nrr",
@@ -67,6 +71,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "customer_tier", "date"],
     compatibleCharts: ["line", "bar"],
     summaryOperation: "average",
+    favorableDirection: "up",
   },
   {
     id: "arpu",
@@ -79,6 +84,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "customer_tier", "product_category", "date"],
     compatibleCharts: ["line", "bar"],
     summaryOperation: "average",
+    favorableDirection: "up",
   },
   {
     id: "total_orders",
@@ -91,6 +97,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "customer_tier", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "sum",
+    favorableDirection: "up",
   },
   {
     id: "avg_order_value",
@@ -103,6 +110,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "customer_tier", "date"],
     compatibleCharts: ["line", "bar"],
     summaryOperation: "average",
+    favorableDirection: "up",
   },
   {
     id: "customer_count",
@@ -116,6 +124,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "customer_tier", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "latest",
+    favorableDirection: "up",
   },
   {
     id: "new_customers",
@@ -129,6 +138,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "customer_tier", "date"],
     compatibleCharts: ["bar", "line"],
     summaryOperation: "sum",
+    favorableDirection: "up",
   },
   {
     id: "revenue_by_region",
@@ -141,6 +151,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "date"],
     compatibleCharts: ["bar", "pie", "table"],
     summaryOperation: "sum",
+    favorableDirection: "up",
   },
   {
     id: "revenue_by_category",
@@ -153,6 +164,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["product_category", "date"],
     compatibleCharts: ["bar", "pie", "table"],
     summaryOperation: "sum",
+    favorableDirection: "up",
   },
   {
     id: "cogs",
@@ -166,6 +178,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "sum",
+    favorableDirection: "contextual",
   },
   {
     id: "operating_expense_ratio",
@@ -179,6 +192,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "date"],
     compatibleCharts: ["line", "bar"],
     summaryOperation: "average",
+    favorableDirection: "down",
   },
   {
     id: "customer_ltv",
@@ -192,6 +206,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "customer_tier", "date"],
     compatibleCharts: ["bar", "table"],
     summaryOperation: "average",
+    favorableDirection: "up",
   },
   {
     id: "mrr",
@@ -205,6 +220,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "customer_tier", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "latest",
+    favorableDirection: "up",
   },
   {
     id: "ebitda_margin",
@@ -218,6 +234,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "average",
+    favorableDirection: "up",
   },
   {
     id: "cac",
@@ -231,6 +248,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "customer_tier", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "average",
+    favorableDirection: "down",
   },
   {
     id: "conversion_rate",
@@ -244,6 +262,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "average",
+    favorableDirection: "up",
   },
   {
     id: "refund_rate",
@@ -257,6 +276,7 @@ export const METRIC_CATALOG: MetricDefinition[] = [
     dimensions: ["region", "product_category", "date"],
     compatibleCharts: ["line", "bar", "table"],
     summaryOperation: "average",
+    favorableDirection: "down",
   },
 ];
 

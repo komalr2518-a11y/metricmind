@@ -28,10 +28,14 @@ import {
   YAxis,
 } from "recharts";
 import { formatMetricValue } from "@/lib/metricmind/format";
-import type { ChartConfig } from "@/lib/metricmind/types";
+import type {
+  ChartConfig,
+  FavorableDirection,
+} from "@/lib/metricmind/types";
 
 interface Props {
   config: ChartConfig | null;
+  favorableDirection?: FavorableDirection;
 }
 
 type ChartView = "line" | "area" | "bar" | "pie";
@@ -61,7 +65,29 @@ function availableViews(config: ChartConfig): ChartView[] {
   return ["line", "area", "bar"];
 }
 
-export function ChartPanel({ config }: Props) {
+function isTemporalChart(config: ChartConfig): boolean {
+  const axisLabel = config.xAxis?.label.toLowerCase() ?? "";
+  return ["period", "month", "quarter", "date", "week", "year", "day"].some(
+    (label) => axisLabel.includes(label)
+  );
+}
+
+function changeColor(
+  change: number | null,
+  favorableDirection: FavorableDirection
+): string {
+  if (change === null || change === 0) return "text-zinc-500";
+  if (favorableDirection === "contextual") return "text-sky-600";
+
+  const isFavorable =
+    favorableDirection === "up" ? change > 0 : change < 0;
+  return isFavorable ? "text-emerald-600" : "text-rose-600";
+}
+
+export function ChartPanel({
+  config,
+  favorableDirection = "contextual",
+}: Props) {
   const [selectedView, setSelectedView] = useState<ChartView>("line");
 
   const chartData = useMemo(() => {
@@ -116,8 +142,11 @@ export function ChartPanel({ config }: Props) {
   const latest = primary.at(-1) ?? 0;
   const change = first === 0 ? null : ((latest - first) / first) * 100;
   const peak = primary.length ? Math.max(...primary) : 0;
+  const minimum = primary.length ? Math.min(...primary) : 0;
   const peakIndex = primary.indexOf(peak);
   const peakLabel = config.xAxis?.data[peakIndex] ?? "—";
+  const temporal = isTemporalChart(config);
+  const spread = peak - minimum;
   const total = primary.reduce((sum, value) => sum + value, 0);
   const aggregate =
     unit === "%" && primary.length ? total / primary.length : total;
@@ -191,41 +220,43 @@ export function ChartPanel({ config }: Props) {
       <div className="grid grid-cols-3 border-b border-zinc-100 bg-zinc-50/60">
         <div className="border-r border-zinc-100 px-3 py-2.5">
           <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-            Latest
+            {temporal ? "Latest" : `Leader · ${peakLabel}`}
           </p>
           <p className="mt-1 truncate text-xs font-bold tabular-nums text-zinc-800">
-            {formatMetricValue(latest, unit, { compact: true })}
+            {formatMetricValue(temporal ? latest : peak, unit, {
+              compact: true,
+            })}
           </p>
         </div>
         <div className="border-r border-zinc-100 px-3 py-2.5">
           <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-            Change
+            {temporal ? "Change" : "Spread"}
           </p>
-          <p
-            className={`mt-1 flex items-center gap-0.5 text-xs font-bold tabular-nums ${
-              change === null
-                ? "text-zinc-500"
-                : change >= 0
-                  ? "text-emerald-600"
-                  : "text-rose-600"
-            }`}
-          >
-            {change === null ? (
-              "—"
+          <p className={`mt-1 flex items-center gap-0.5 text-xs font-bold tabular-nums ${
+            temporal ? changeColor(change, favorableDirection) : "text-zinc-800"
+          }`}>
+            {temporal ? (
+              change === null ? (
+                "—"
+              ) : (
+                <>
+                  <ChangeIcon className="h-3 w-3" />
+                  {Math.abs(change).toFixed(1)}%
+                </>
+              )
             ) : (
-              <>
-                <ChangeIcon className="h-3 w-3" />
-                {Math.abs(change).toFixed(1)}%
-              </>
+              formatMetricValue(spread, unit, { compact: true })
             )}
           </p>
         </div>
         <div className="px-3 py-2.5">
           <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">
-            Peak · {peakLabel}
+            {temporal ? `Peak · ${peakLabel}` : "Groups"}
           </p>
           <p className="mt-1 truncate text-xs font-bold tabular-nums text-zinc-800">
-            {formatMetricValue(peak, unit, { compact: true })}
+            {temporal
+              ? formatMetricValue(peak, unit, { compact: true })
+              : primary.length.toLocaleString("en-US")}
           </p>
         </div>
       </div>

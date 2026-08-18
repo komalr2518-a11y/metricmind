@@ -3,6 +3,10 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Table2 } from "lucide-react";
 import { formatMetricValue } from "@/lib/metricmind/format";
+import {
+  getMetricTableDimensionLabel,
+  summarizeMetricTable,
+} from "@/lib/metricmind/table-insights";
 import type { MetricResult } from "@/lib/metricmind/types";
 
 interface DataTableProps {
@@ -50,25 +54,11 @@ export function DataTable({ result }: DataTableProps) {
     });
   }, [rows, sortKey, sortAsc]);
 
-  const summary = useMemo(() => {
-    if (rows.length === 0) return { label: "Total", value: 0 };
-
-    if (result.summaryOperation === "average") {
-      return {
-        label: "Average",
-        value: rows.reduce((sum, row) => sum + row.value, 0) / rows.length,
-      };
-    }
-
-    if (result.summaryOperation === "latest") {
-      return { label: "Latest", value: rows.at(-1)?.value ?? 0 };
-    }
-
-    return {
-      label: "Total",
-      value: rows.reduce((sum, row) => sum + row.value, 0),
-    };
-  }, [result.summaryOperation, rows]);
+  const dimensionLabel = useMemo(
+    () => getMetricTableDimensionLabel(result),
+    [result]
+  );
+  const summary = useMemo(() => summarizeMetricTable(result), [result]);
 
   function toggleSort(key: SortKey) {
     if (key === sortKey) setSortAsc((current) => !current);
@@ -114,7 +104,7 @@ export function DataTable({ result }: DataTableProps) {
                   className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-700"
                   onClick={() => toggleSort("period")}
                 >
-                  Period
+                  {dimensionLabel}
                   {sortKey === "period" && <SortIcon className="h-3 w-3" />}
                 </button>
               </th>

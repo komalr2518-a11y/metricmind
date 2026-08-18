@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
   type FormEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
   Bot,
@@ -59,6 +60,7 @@ const STORAGE_KEY_PREFIX = "metricmind_messages_v2";
 const MAX_SAVED_MESSAGES = 50;
 const SERVER_STORAGE_SNAPSHOT = "__metricmind_server__";
 const EMPTY_STORAGE_SNAPSHOT = "__metricmind_empty__";
+const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
   role: "assistant",
@@ -92,6 +94,20 @@ function subscribeToStorage(callback: () => void) {
 
 function getServerStorageSnapshot(): string {
   return SERVER_STORAGE_SNAPSHOT;
+}
+
+function subscribeToDesktopViewport(callback: () => void) {
+  const mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY);
+  mediaQuery.addEventListener("change", callback);
+  return () => mediaQuery.removeEventListener("change", callback);
+}
+
+function getDesktopViewportSnapshot(): boolean {
+  return window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
+}
+
+function getDesktopViewportServerSnapshot(): boolean {
+  return false;
 }
 
 function parseSavedMessages(saved: string): Message[] | null {
@@ -132,6 +148,12 @@ function saveMessages(messages: Message[], storageKey: string) {
 }
 
 export default function MetricMindApp({ user }: MetricMindAppProps) {
+  const router = useRouter();
+  const isDesktopViewport = useSyncExternalStore(
+    subscribeToDesktopViewport,
+    getDesktopViewportSnapshot,
+    getDesktopViewportServerSnapshot
+  );
   const storageKey = `${STORAGE_KEY_PREFIX}:${user.id}`;
   const getUserStorageSnapshot = useCallback(
     () => localStorage.getItem(storageKey) ?? EMPTY_STORAGE_SNAPSHOT,
@@ -200,7 +222,7 @@ export default function MetricMindApp({ user }: MetricMindAppProps) {
 
   function nextMessageId(prefix: string) {
     messageSequence.current += 1;
-    return `${prefix}-${messageSequence.current}`;
+    return `${prefix}-${Date.now()}-${messageSequence.current}`;
   }
 
   function updateMessages(updater: (current: Message[]) => Message[]) {
@@ -318,7 +340,7 @@ export default function MetricMindApp({ user }: MetricMindAppProps) {
     try {
       const response = await fetch("/api/auth/logout", { method: "POST" });
       if (!response.ok) throw new Error("Logout failed.");
-      window.location.assign("/login");
+      router.replace("/login");
     } catch {
       setIsLoggingOut(false);
     }
@@ -560,7 +582,12 @@ export default function MetricMindApp({ user }: MetricMindAppProps) {
               </div>
             )}
 
-            <ChartPanel config={activeChart} />
+            {isDesktopViewport && (
+              <ChartPanel
+                config={activeChart}
+                favorableDirection={activeMetric?.favorableDirection}
+              />
+            )}
             {activeResult && <DataTable result={activeResult} />}
 
             {activeMetric && activeResult && (
@@ -599,9 +626,12 @@ export default function MetricMindApp({ user }: MetricMindAppProps) {
           </aside>
         </main>
 
-        {activeResult && (
+        {!isDesktopViewport && activeResult && (
           <section className="max-h-[44vh] shrink-0 space-y-3 overflow-y-auto border-t border-zinc-200 bg-zinc-50 p-3 lg:hidden">
-            <ChartPanel config={activeChart} />
+            <ChartPanel
+              config={activeChart}
+              favorableDirection={activeMetric?.favorableDirection}
+            />
             <DataTable result={activeResult} />
           </section>
         )}

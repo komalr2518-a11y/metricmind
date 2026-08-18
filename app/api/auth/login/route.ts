@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { AUTH_NO_STORE_HEADERS, authError, readJsonBody } from "@/lib/auth/api";
 import {
   checkRateLimit,
+  clearRateLimit,
   getRequestClientKey,
 } from "@/lib/auth/rate-limit";
 import { SESSION_COOKIE_NAME, sessionCookieOptions } from "@/lib/auth/session";
@@ -13,17 +14,6 @@ const LOGIN_LIMIT = 10;
 const LOGIN_WINDOW_MS = 10 * 60 * 1_000;
 
 export async function POST(request: Request) {
-  const rateLimit = checkRateLimit(
-    getRequestClientKey(request, "login"),
-    LOGIN_LIMIT,
-    LOGIN_WINDOW_MS
-  );
-  if (!rateLimit.allowed) {
-    return authError("Too many login attempts. Please try again later.", 429, {
-      "Retry-After": String(rateLimit.retryAfterSeconds),
-    });
-  }
-
   const body = await readJsonBody(request);
   if (!body.ok) return body.response;
 
@@ -32,12 +22,30 @@ export async function POST(request: Request) {
   });
   if (!validation.ok) return authError("Invalid username or password.", 401);
 
+  const rateLimitKey = getRequestClientKey(
+    request,
+    `login:${validation.credentials.username}`
+  );
+  if (process.env.NODE_ENV === "production") {
+    const rateLimit = checkRateLimit(
+      rateLimitKey,
+      LOGIN_LIMIT,
+      LOGIN_WINDOW_MS
+    );
+    if (!rateLimit.allowed) {
+      return authError("Too many login attempts. Please try again later.", 429, {
+        "Retry-After": String(rateLimit.retryAfterSeconds),
+      });
+    }
+  }
+
   try {
     const session = await loginUser(
       validation.credentials.username,
       validation.credentials.password
     );
     if (!session) return authError("Invalid username or password.", 401);
+    clearRateLimit(rateLimitKey);
 
     const response = NextResponse.json<AuthSuccessResponse>(
       { user: session.user },

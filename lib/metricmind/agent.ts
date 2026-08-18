@@ -286,17 +286,46 @@ function generateRanking(
   metric: MetricDefinition,
   userMessage: string
 ): string {
+  const normalizedMessage = userMessage.toLowerCase();
   const ranked = [...result.data].sort(
     (a, b) => Number(b.value) - Number(a.value)
   );
-  const wantsLowest = includesAny(userMessage.toLowerCase(), [
-    "lowest",
-    "worst",
-    "weakest",
+  const asksBest = includesAny(normalizedMessage, ["best", "strongest"]);
+  const asksWorst = includesAny(normalizedMessage, ["worst", "weakest"]);
+  const explicitlyLowest = normalizedMessage.includes("lowest");
+  const explicitlyHighest = includesAny(normalizedMessage, [
+    "highest",
+    "leader",
+    "leading",
+    "top ",
   ]);
+  const lowerIsBetter = metric.favorableDirection === "down";
+  const wantsLowest = explicitlyLowest
+    ? true
+    : explicitlyHighest
+      ? false
+      : asksBest
+        ? lowerIsBetter
+        : asksWorst
+          ? !lowerIsBetter
+          : false;
   const selected = wantsLowest ? ranked.at(-1) : ranked[0];
   const runnerUp = wantsLowest ? ranked.at(-2) : ranked[1];
   const direction = wantsLowest ? "lowest" : "highest";
+  const heading = asksBest
+    ? "Best"
+    : asksWorst
+      ? "Worst"
+      : wantsLowest
+        ? "Lowest"
+        : "Top";
+  const listHeading = asksBest
+    ? "Best"
+    : asksWorst
+      ? "Worst"
+      : wantsLowest
+        ? "Lowest"
+        : "Top";
   const ranking = (wantsLowest ? [...ranked].reverse() : ranked)
     .slice(0, 3)
     .map(
@@ -312,9 +341,9 @@ function generateRanking(
       ? Math.abs(Number(selected.value) - Number(runnerUp.value))
       : null;
 
-  return `## ${direction === "highest" ? "Top" : "Lowest"} ${
-    metric.name
-  }\n\n**${rowLabel(selected)}** has the ${direction} value at **${formatMetricValue(
+  return `## ${heading} ${metric.name}\n\n**${rowLabel(
+    selected
+  )}** has the ${asksBest || asksWorst ? `${heading.toLowerCase()} (${direction})` : direction} value at **${formatMetricValue(
     Number(selected?.value),
     metric.unit
   )}**${
@@ -323,7 +352,7 @@ function generateRanking(
       : `, a ${formatMetricValue(gap, metric.unit)} gap from ${rowLabel(
           runnerUp
         )}.`
-  }\n\n### ${wantsLowest ? "Bottom" : "Top"} 3\n\n${ranking}\n\n${sourceNotice(
+  }\n\n### ${listHeading} 3\n\n${ranking}\n\n${sourceNotice(
     result
   )}`;
 }

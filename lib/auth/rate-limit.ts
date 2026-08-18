@@ -39,3 +39,7 @@ export function checkRateLimit(
   entry.attempts += 1;
   return { allowed: true, retryAfterSeconds: 0 };
 }
+
+export function clearRateLimit(key: string): void {
+  attempts.delete(key);
+}

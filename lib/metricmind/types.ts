@@ -7,6 +7,7 @@ export type MetricCategory =
 
 export type MetricUnit = "USD" | "%" | "#";
 export type SummaryOperation = "sum" | "average" | "latest";
+export type FavorableDirection = "up" | "down" | "contextual";
 export type ChartType = "line" | "bar" | "pie" | "heatmap" | "table";
 
 export interface MetricDefinition {
@@ -20,6 +21,7 @@ export interface MetricDefinition {
   dimensions: string[];
   compatibleCharts: ChartType[];
   summaryOperation: SummaryOperation;
+  favorableDirection: FavorableDirection;
 }
 
 export interface MetricQuery {

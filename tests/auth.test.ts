@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { hashPassword, verifyPassword } from "../lib/auth/password";
+import { checkRateLimit, clearRateLimit } from "../lib/auth/rate-limit";
 import { validateCredentials } from "../lib/auth/validation";
 
 test("registration credentials are normalized and validated", () => {
@@ -34,4 +35,16 @@ test("password hashes verify without storing the original password", async () =>
   assert.notEqual(digest.hash, password);
   assert.equal(await verifyPassword(password, digest), true);
   assert.equal(await verifyPassword("incorrect-password-42", digest), false);
+});
+
+test("rate limits can be cleared after a successful authentication", () => {
+  const key = `test-login:${Date.now()}`;
+
+  assert.equal(checkRateLimit(key, 2, 60_000).allowed, true);
+  assert.equal(checkRateLimit(key, 2, 60_000).allowed, true);
+  assert.equal(checkRateLimit(key, 2, 60_000).allowed, false);
+
+  clearRateLimit(key);
+  assert.equal(checkRateLimit(key, 2, 60_000).allowed, true);
+  clearRateLimit(key);
 });

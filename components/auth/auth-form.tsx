@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { LoaderCircle, LockKeyhole, LogIn, UserPlus, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ function responseError(value: unknown): string | null {
 }
 
 export default function AuthForm({ mode }: AuthFormProps) {
+  const router = useRouter();
   const isRegister = mode === "register";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -61,7 +63,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
         );
       }
 
-      window.location.assign("/");
+      router.replace("/");
     } catch (submissionError) {
       setError(
         submissionError instanceof Error

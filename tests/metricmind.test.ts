@@ -4,12 +4,19 @@ import { processUserQuery, parseIntent } from "../lib/metricmind/agent";
 import { METRIC_CATALOG } from "../lib/metricmind/catalog";
 import { formatMetricValue } from "../lib/metricmind/format";
 import { executeMetricQuery } from "../lib/metricmind/semantic-layer";
+import {
+  getMetricTableDimensionLabel,
+  summarizeMetricTable,
+} from "../lib/metricmind/table-insights";
 
 test("catalog exposes complete metric metadata", () => {
   assert.equal(METRIC_CATALOG.length, 20);
   assert.ok(
     METRIC_CATALOG.every(
-      (metric) => metric.summaryOperation && metric.dimensions.length > 0
+      (metric) =>
+        metric.summaryOperation &&
+        metric.favorableDirection &&
+        metric.dimensions.length > 0
     )
   );
 });
@@ -63,6 +70,38 @@ test("ranking questions identify leaders and return a ranked answer", () => {
   assert.equal(intent.dimension, "region");
   assert.match(response.message, /Top Revenue by Region/);
   assert.match(response.message, /### Top 3/);
+});
+
+test("best and worst rankings respect lower-is-better metrics", () => {
+  const best = processUserQuery(
+    "Which region has the best Customer Churn Rate?"
+  );
+  const worst = processUserQuery(
+    "Which region has the worst Customer Churn Rate?"
+  );
+
+  assert.match(best.message, /North America/);
+  assert.match(best.message, /best \(lowest\)/);
+  assert.match(worst.message, /Latin America/);
+  assert.match(worst.message, /worst \(highest\)/);
+});
+
+test("breakdown tables use dimension-aware labels and totals", () => {
+  const breakdown = executeMetricQuery({
+    metricId: "mrr",
+    dimensions: ["customer_tier"],
+  });
+  const trend = executeMetricQuery({ metricId: "mrr" });
+
+  assert.equal(getMetricTableDimensionLabel(breakdown), "Customer tier");
+  assert.deepEqual(summarizeMetricTable(breakdown), {
+    label: "Total",
+    value: 1158000,
+  });
+  assert.deepEqual(summarizeMetricTable(trend), {
+    label: "Latest",
+    value: 1158000,
+  });
 });
 
 test("comparison intent is reachable and compares the latest quarters", () => {
