@@ -12,6 +12,10 @@
 
 # testing
 /coverage
+/.test-dist/
+
+# local development auth data
+/.data/
 
 # next.js
 /.next/

@@ -1,16 +1,43 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
+import {
+  ArrowUpRight,
+  Bot,
+  LoaderCircle,
+  LogOut,
+  Menu,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { METRIC_CATALOG } from "@/lib/metricmind/catalog";
+import type { PublicUser } from "@/lib/auth/types";
+import type {
+  AgentResponse,
+  ChartConfig,
+  MetricDefinition,
+  MetricResult,
+} from "@/lib/metricmind/types";
 import ChartPanel from "./chart-panel";
 import DataTable from "./data-table";
-import MetricSidebar from "./metric-sidebar";
 import KpiCards from "./kpi-cards";
-import type { ChartConfig, MetricDefinition, MetricResult } from "@/lib/metricmind/semantic-layer";
+import MetricSidebar from "./metric-sidebar";
+import QuestionLaunchpad from "./question-launchpad";
 
 interface Message {
   id: string;
@@ -23,434 +50,561 @@ interface Message {
   isLoading?: boolean;
 }
 
-const SUGGESTED_QUERIES = [
-  "Why did margins drop last quarter?",
-  "Show me total revenue trend",
-  "Break down revenue by region",
-  "What is the customer churn rate?",
-  "Show ARPU by customer tier",
-  "List all available metrics",
-];
-
-const STORAGE_KEY = "metricmind_messages";
-
-function loadSavedMessages(): Message[] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch { /* ignore */ }
-  return null;
+interface MetricMindAppProps {
+  user: PublicUser;
 }
 
-function saveMessages(messages: Message[]) {
-  if (typeof window === "undefined") return;
-  try {
-    const toSave = messages.filter((m) => !m.isLoading);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-  } catch { /* ignore */ }
+const MAX_MESSAGE_LENGTH = 500;
+const STORAGE_KEY_PREFIX = "metricmind_messages_v2";
+const MAX_SAVED_MESSAGES = 50;
+const SERVER_STORAGE_SNAPSHOT = "__metricmind_server__";
+const EMPTY_STORAGE_SNAPSHOT = "__metricmind_empty__";
+const WELCOME_MESSAGE: Message = {
+  id: "welcome",
+  role: "assistant",
+  content:
+    "## Your business, explained clearly\n\nAsk about revenue, customers, margins, growth, or efficiency. MetricMind turns each question into an **answer, interactive chart, and source-backed table** using deterministic demo data.",
+};
+const DEFAULT_MESSAGES = [WELCOME_MESSAGE];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-export default function MetricMindApp() {
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const saved = loadSavedMessages();
-    if (saved) return saved;
-    return [
-      {
-        id: "welcome",
-        role: "assistant",
-        content: `## Welcome to **MetricMind**\n\nI am your Agentic Semantic BI Assistant. I query **governed metrics** from the Semantic Layer — not raw SQL — ensuring every number is consistent with official financial reports.\n\n**Try asking me:**`,
-        followUps: SUGGESTED_QUERIES.slice(0, 4),
-      },
-    ];
-  });
+function isAgentResponse(value: unknown): value is AgentResponse {
+  return (
+    isRecord(value) &&
+    typeof value.message === "string" &&
+    Array.isArray(value.suggestedFollowUps) &&
+    value.suggestedFollowUps.every((item) => typeof item === "string")
+  );
+}
+
+function getErrorMessage(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  return typeof value.error === "string" ? value.error : null;
+}
+
+function subscribeToStorage(callback: () => void) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
+function getServerStorageSnapshot(): string {
+  return SERVER_STORAGE_SNAPSHOT;
+}
+
+function parseSavedMessages(saved: string): Message[] | null {
+  if (
+    saved === SERVER_STORAGE_SNAPSHOT ||
+    saved === EMPTY_STORAGE_SNAPSHOT
+  ) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return null;
+
+    const valid = parsed.filter((item): item is Message => {
+      if (!isRecord(item)) return false;
+      return (
+        typeof item.id === "string" &&
+        (item.role === "user" || item.role === "assistant") &&
+        typeof item.content === "string" &&
+        item.isLoading !== true
+      );
+    });
+
+    return valid.length > 0 ? valid.slice(-MAX_SAVED_MESSAGES) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveMessages(messages: Message[], storageKey: string) {
+  try {
+    const persistent = messages
+      .filter((message) => !message.isLoading)
+      .slice(-MAX_SAVED_MESSAGES);
+    localStorage.setItem(storageKey, JSON.stringify(persistent));
+  } catch {
+    // Storage can be unavailable in private browsing or restrictive environments.
+  }
+}
+
+export default function MetricMindApp({ user }: MetricMindAppProps) {
+  const storageKey = `${STORAGE_KEY_PREFIX}:${user.id}`;
+  const getUserStorageSnapshot = useCallback(
+    () => localStorage.getItem(storageKey) ?? EMPTY_STORAGE_SNAPSHOT,
+    [storageKey]
+  );
+  const storageSnapshot = useSyncExternalStore(
+    subscribeToStorage,
+    getUserStorageSnapshot,
+    getServerStorageSnapshot
+  );
+  const restoredMessages = useMemo(
+    () => parseSavedMessages(storageSnapshot),
+    [storageSnapshot]
+  );
+  const [sessionMessages, setSessionMessages] = useState<Message[] | null>(null);
+  const messages = useMemo(
+    () => sessionMessages ?? restoredMessages ?? DEFAULT_MESSAGES,
+    [restoredMessages, sessionMessages]
+  );
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [activeChart, setActiveChart] = useState<ChartConfig | null>(null);
-  const [activeMetricResult, setActiveMetricResult] = useState<MetricResult | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const visualizationRef = useRef<HTMLElement>(null);
+  const requestRef = useRef<AbortController | null>(null);
+  const messageSequence = useRef(0);
 
-  // Persist messages
   useEffect(() => {
-    saveMessages(messages);
+    if (storageSnapshot !== SERVER_STORAGE_SNAPSHOT) {
+      saveMessages(messages, storageKey);
+    }
+  }, [messages, storageKey, storageSnapshot]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
   }, [messages]);
 
-  const scrollToBottom = useCallback(() => {
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-    }, 100);
+  useEffect(() => {
+    return () => requestRef.current?.abort();
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+  const activeMessage = useMemo(
+    () =>
+      [...messages]
+        .reverse()
+        .find((message) => message.metricResult && message.metricDef),
+    [messages]
+  );
+  const activeResult = activeMessage?.metricResult ?? null;
+  const activeChart = activeResult?.chartConfig ?? null;
+  const activeMetric = activeMessage?.metricDef;
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading) return;
-    const userMsg = text.trim();
+  useEffect(() => {
+    if (!activeChart) return;
+
+    visualizationRef.current?.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }, [activeChart]);
+
+  function nextMessageId(prefix: string) {
+    messageSequence.current += 1;
+    return `${prefix}-${messageSequence.current}`;
+  }
+
+  function updateMessages(updater: (current: Message[]) => Message[]) {
+    setSessionMessages((current) =>
+      updater(current ?? restoredMessages ?? DEFAULT_MESSAGES)
+    );
+  }
+
+  async function sendMessage(text: string) {
+    const userText = text.trim();
+    if (!userText || requestRef.current) return;
+
+    const controller = new AbortController();
+    requestRef.current = controller;
     setInput("");
     setIsLoading(true);
 
     const userMessage: Message = {
-      id: `user-${Date.now()}`,
+      id: nextMessageId("user"),
       role: "user",
-      content: userMsg,
+      content: userText,
     };
-
     const loadingMessage: Message = {
-      id: `loading-${Date.now()}`,
+      id: nextMessageId("loading"),
       role: "assistant",
       content: "",
       isLoading: true,
     };
-
-    setMessages((prev) => [...prev, userMessage, loadingMessage]);
-    scrollToBottom();
+    updateMessages((current) => [...current, userMessage, loadingMessage]);
 
     try {
-      const res = await fetch("/api/chat", {
+      const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg }),
+        body: JSON.stringify({ message: userText }),
+        signal: controller.signal,
       });
 
-      let data: any = {};
+      let payload: unknown = null;
       try {
-        data = await res.json();
+        payload = await response.json();
       } catch {
-        data = {};
+        // The status-based fallback below handles non-JSON server responses.
       }
 
-      if (!res.ok) {
-        throw new Error(data?.error || data?.message || "Request failed");
+      if (!response.ok) {
+        throw new Error(getErrorMessage(payload) ?? "The request failed.");
+      }
+      if (!isAgentResponse(payload)) {
+        throw new Error("The server returned an invalid response.");
       }
 
       const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
+        id: nextMessageId("assistant"),
         role: "assistant",
-        content: typeof data.message === "string" ? data.message : "Sorry, I couldn't process that request.",
-        chartConfig: data.metricResult?.chartConfig,
-        metricDef: data.metricDef,
-        metricResult: data.metricResult,
-        followUps: data.suggestedFollowUps,
+        content: payload.message,
+        chartConfig: payload.metricResult?.chartConfig,
+        metricDef: payload.metricDef,
+        metricResult: payload.metricResult,
+        followUps: payload.suggestedFollowUps,
       };
 
-      if (data.metricResult?.chartConfig) {
-        setActiveChart(data.metricResult.chartConfig);
-        setActiveMetricResult(data.metricResult);
-      } else {
-        setActiveChart(null);
-        setActiveMetricResult(null);
-      }
-
-      setMessages((prev) => [...prev.filter((m) => !m.isLoading), assistantMessage]);
+      updateMessages((current) => [
+        ...current.filter((message) => !message.isLoading),
+        assistantMessage,
+      ]);
     } catch (error) {
-      const fallbackMessage =
+      if (controller.signal.aborted) return;
+
+      const fallback =
         error instanceof Error && error.message
           ? error.message
-          : "Sorry, I encountered an error processing your query. Please try again.";
-
-      setMessages((prev) => [
-        ...prev.filter((m) => !m.isLoading),
+          : "Something went wrong. Please try again.";
+      updateMessages((current) => [
+        ...current.filter((message) => !message.isLoading),
         {
-          id: `error-${Date.now()}`,
+          id: nextMessageId("error"),
           role: "assistant",
-          content: fallbackMessage,
+          content: fallback,
         },
       ]);
-      setActiveChart(null);
-      setActiveMetricResult(null);
     } finally {
-      setIsLoading(false);
-      inputRef.current?.focus();
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setIsLoading(false);
+        inputRef.current?.focus();
+      }
     }
-  };
+  }
 
-  const handleMetricSelect = (metric: MetricDefinition) => {
-    sendMessage(`Show me ${metric.name} trend`);
-  };
+  function handleMetricSelect(metricId: string) {
+    const metric = METRIC_CATALOG.find((item) => item.id === metricId);
+    if (metric) void sendMessage(`Show me ${metric.name} trend`);
+  }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    sendMessage(input);
-  };
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    void sendMessage(input);
+  }
 
-  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant" && !m.isLoading);
-
-  const clearChat = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-
+  function refreshDashboard() {
+    requestRef.current?.abort();
+    requestRef.current = null;
+    localStorage.removeItem(storageKey);
     setIsLoading(false);
     setInput("");
-    setMessages([
-      {
-        id: "welcome",
-        role: "assistant",
-        content: `## Welcome to **MetricMind**\n\nI am your Agentic Semantic BI Assistant. I query **governed metrics** from the Semantic Layer.\n\n**Try asking me:**`,
-        followUps: SUGGESTED_QUERIES.slice(0, 4),
-      },
-    ]);
-    setActiveChart(null);
-    setActiveMetricResult(null);
+    setSessionMessages([WELCOME_MESSAGE]);
     inputRef.current?.focus();
-  };
+  }
+
+  async function logout() {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Logout failed.");
+      window.location.assign("/login");
+    } catch {
+      setIsLoggingOut(false);
+    }
+  }
 
   return (
-    <div className="flex h-[100dvh] bg-white overflow-hidden">
-      {/* ─── Metric Sidebar ─── */}
-      <MetricSidebar />
+    <div className="flex h-[100dvh] overflow-hidden bg-[#f6f5f1]">
+      <MetricSidebar
+        activeId={activeResult?.metricId}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onSelect={handleMetricSelect}
+      />
 
-      {/* ─── Main Content ─── */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* ─── Header ─── */}
-        <header className="border-b border-zinc-200 bg-white px-4 sm:px-6 py-3 flex items-center justify-between shrink-0">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center justify-between border-b border-zinc-200/80 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-xl sm:px-6">
           <div className="flex items-center gap-3">
-            {/* Mobile menu button */}
             <Button
+              type="button"
               variant="ghost"
               size="icon"
+              aria-controls="metric-catalog"
+              aria-expanded={sidebarOpen}
+              aria-label="Open metric catalog"
               className="h-8 w-8 lg:hidden"
               onClick={() => setSidebarOpen(true)}
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+              <Menu className="h-4 w-4" />
             </Button>
 
-            {/* Logo */}
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-md shadow-orange-200">
+                <Zap className="h-4 w-4 text-white" aria-hidden="true" />
               </div>
               <div>
-                <h1 className="text-sm font-semibold text-zinc-900 leading-none">MetricMind</h1>
-                <p className="text-[11px] text-zinc-400 mt-0.5">Agentic Semantic BI Engine</p>
+                <h1 className="text-sm font-extrabold leading-none tracking-tight text-zinc-900">
+                  MetricMind
+                </h1>
+                <p className="mt-0.5 text-[11px] text-zinc-400">
+                  Ask · explore · decide
+                </p>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50 hidden sm:inline-flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
-              Semantic Layer Active
+            <Badge
+              variant="outline"
+              className="max-w-32 truncate border-zinc-200 text-[10px] text-zinc-600"
+              title={`Signed in as ${user.username}`}
+            >
+              @{user.username}
             </Badge>
-            <Badge variant="secondary" className="text-[10px] bg-zinc-100 text-zinc-600 border-zinc-200 hover:bg-zinc-100 hidden sm:inline-flex">
-              15 Metrics Governed
+            <Badge
+              variant="secondary"
+              className="hidden border-amber-200 bg-amber-50 text-[10px] text-amber-800 hover:bg-amber-50 sm:inline-flex"
+            >
+              Demo data
+            </Badge>
+            <Badge
+              variant="secondary"
+              className="hidden border-zinc-200 bg-zinc-100 text-[10px] text-zinc-600 hover:bg-zinc-100 sm:inline-flex"
+            >
+              {METRIC_CATALOG.length} metrics defined
             </Badge>
             <Button
+              type="button"
+              variant="ghost"
+              aria-label="Refresh dashboard and clear current questions"
+              title="Refresh dashboard and start fresh"
+              className="h-8 gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-zinc-500 hover:bg-orange-50 hover:text-orange-700"
+              onClick={refreshDashboard}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+            <Button
+              type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-zinc-400 hover:text-zinc-600"
-              onClick={clearChat}
-              title="Clear conversation"
+              aria-label="Sign out"
+              title="Sign out"
+              disabled={isLoggingOut}
+              className="h-8 w-8 text-zinc-400 hover:text-zinc-700"
+              onClick={() => void logout()}
             >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              {isLoggingOut ? (
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <LogOut className="h-3.5 w-3.5" />
+              )}
             </Button>
           </div>
         </header>
 
-        {/* ─── KPI Cards ─── */}
-        <KpiCards />
+        <KpiCards
+          activeId={activeResult?.metricId}
+          onSelect={handleMetricSelect}
+        />
 
-        {/* ─── Content: Chat + Chart Split ─── */}
-        <div className="flex-1 flex overflow-hidden min-h-0">
-          {/* Chat Panel */}
-          <div className="w-full lg:w-[55%] flex flex-col border-r border-zinc-100 min-h-0">
-            <ScrollArea className="flex-1 min-h-0">
-              <div ref={scrollRef} className="p-4 sm:p-6 space-y-4">
-                {messages.map((msg) => (
-                  <div key={msg.id}
-                    className={`flex ${
-                      msg.role === "user" ? "justify-end" : "justify-start"
+        <main className="flex min-h-0 flex-1 overflow-hidden">
+          <section
+            aria-label="MetricMind conversation"
+            className="flex min-h-0 w-full flex-col border-r border-zinc-200/70 bg-[#faf9f6] lg:w-[55%]"
+          >
+            <ScrollArea className="min-h-0 flex-1">
+              <div
+                role="log"
+                aria-live="polite"
+                aria-relevant="additions"
+                className="space-y-4 p-4 sm:p-6"
+              >
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex items-end gap-2 ${
+                      message.role === "user"
+                        ? "justify-end"
+                        : "justify-start"
                     }`}
                   >
+                    {message.role === "assistant" && (
+                      <div className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 shadow-sm">
+                        <Bot className="h-3.5 w-3.5 text-white" aria-hidden="true" />
+                      </div>
+                    )}
                     <div
-                      className={`max-w-[90%] sm:max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                        msg.role === "user"
-                          ? "bg-zinc-900 text-white rounded-br-md"
-                          : "bg-zinc-50 text-zinc-800 rounded-bl-md border border-zinc-100"
-                      } ${msg.isLoading ? "animate-pulse" : ""}`}
+                      className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-relaxed sm:max-w-[82%] ${
+                        message.role === "user"
+                          ? "rounded-br-md bg-gradient-to-br from-zinc-900 to-zinc-800 text-white shadow-md shadow-zinc-200"
+                          : "rounded-bl-md border border-zinc-200/80 bg-white text-zinc-800 shadow-sm"
+                      }`}
                     >
-                      {msg.isLoading ? (
-                        <div className="flex items-center gap-2 text-zinc-500">
-                          <svg
-                            className="animate-spin h-4 w-4"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                          >
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                            />
-                          </svg>
-
-                          Querying Semantic Layer with AI analysis...
+                      {message.isLoading ? (
+                        <div
+                          role="status"
+                          className="flex items-center gap-2 text-zinc-500"
+                        >
+                          <LoaderCircle className="h-4 w-4 animate-spin" />
+                          Analyzing demo metric data…
                         </div>
                       ) : (
-                        <div className="prose prose-sm prose-zinc max-w-none">
-                          <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        <div className="prose prose-sm prose-zinc max-w-none prose-headings:mb-2 prose-headings:mt-0 prose-headings:text-zinc-900 prose-p:my-2 prose-li:my-0.5 prose-blockquote:border-orange-300 prose-blockquote:bg-orange-50/60 prose-blockquote:px-3 prose-blockquote:py-1 prose-blockquote:not-italic">
+                          <ReactMarkdown>{message.content}</ReactMarkdown>
                         </div>
                       )}
 
-                      {msg.followUps &&
-                        msg.followUps.length > 0 &&
-                        msg.role === "assistant" &&
-                        !msg.isLoading && (
-                          <div className="mt-3 pt-3 border-t border-zinc-200/60">
-                            <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium mb-2">
-                              Suggested Follow-ups
-                            </p>
-
-                            <div className="flex flex-wrap gap-1.5">
-                              {msg.followUps.map((fu, i) => (
-                                <button
-                                  key={i}
-                                  onClick={() => !isLoading && sendMessage(fu)}
-                                  disabled={isLoading}
-                                  className="text-[11px] px-2.5 py-1 rounded-full bg-white border border-zinc-200 text-zinc-600 hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  {fu}
-                                </button>
-                              ))}
-                            </div>
+                      {message.followUps?.length && !message.isLoading ? (
+                        <div className="mt-3 border-t border-zinc-200/60 pt-3">
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-400">
+                            Continue exploring
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {message.followUps.map((followUp) => (
+                              <button
+                                type="button"
+                                key={followUp}
+                                disabled={isLoading}
+                                className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-medium text-zinc-600 transition-all hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                onClick={() => void sendMessage(followUp)}
+                              >
+                                {followUp}
+                                <ArrowUpRight className="h-3 w-3" />
+                              </button>
+                            ))}
                           </div>
-                        )}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} aria-hidden="true" />
               </div>
             </ScrollArea>
 
-            {/* Quick Query Suggestions */}
             {messages.length <= 2 && (
-              <div className="px-4 sm:px-6 pb-2 shrink-0">
-                <p className="text-[10px] uppercase tracking-wider text-zinc-400 font-medium mb-2">
-                  Quick Queries
-                </p>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {SUGGESTED_QUERIES.map((q, i) => (
-                    <button
-                      key={i}
-                      onClick={() => sendMessage(q)}
-                      disabled={isLoading}
-                      className="text-[11px] px-2.5 py-1.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 transition-colors disabled:opacity-50"
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <QuestionLaunchpad
+                disabled={isLoading}
+                onSelect={(question) => void sendMessage(question)}
+              />
             )}
 
-            {/* Input Area */}
-            <div className="p-3 sm:p-4 border-t border-zinc-100 bg-white shrink-0">
-              <form onSubmit={handleSubmit} className="flex gap-2">
+            <div className="shrink-0 border-t border-zinc-200/70 bg-white/95 p-3 backdrop-blur sm:p-4">
+              <form
+                className="flex gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-1.5 shadow-inner"
+                onSubmit={handleSubmit}
+              >
+                <label htmlFor="metric-question" className="sr-only">
+                  Ask a business question
+                </label>
                 <Input
+                  id="metric-question"
                   ref={inputRef}
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask a business question... e.g. Why did margins drop?"
+                  maxLength={MAX_MESSAGE_LENGTH}
+                  autoComplete="off"
+                  placeholder="Ask about revenue, customers, margins…"
                   disabled={isLoading}
-                  className="flex-1 h-10 rounded-xl bg-zinc-50 border-zinc-200 text-sm focus-visible:ring-orange-400 focus-visible:border-orange-400"
+                  className="h-10 flex-1 border-0 bg-transparent text-sm shadow-none focus-visible:ring-0"
+                  onChange={(event) => setInput(event.target.value)}
                 />
-
                 <Button
                   type="submit"
+                  aria-label="Send question"
                   disabled={isLoading || !input.trim()}
-                  className="h-10 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white"
+                  className="h-10 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 text-white shadow-md shadow-orange-200 hover:from-orange-600 hover:to-amber-600"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 19V5m0 0l-7 7m7-7l7 7"
-                    />
-                  </svg>
+                  <Send className="h-4 w-4" />
                 </Button>
               </form>
+              <p className="mt-1.5 text-center text-[9px] text-zinc-400">
+                Answers use deterministic demo data · press Enter to send
+              </p>
             </div>
-          </div>
+          </section>
 
-          {/* ─── Right Panel (Desktop): Chart + Table + Info ─── */}
-          <div className="hidden lg:flex flex-col w-[45%] p-4 gap-3 bg-zinc-50/30 overflow-y-auto">
-            {/* Metric Info Bar */}
-            {activeChart && lastAssistantMsg?.metricDef && (
-              <div className="flex items-center gap-2 text-xs text-zinc-500 bg-white rounded-lg px-3 py-2 border border-zinc-100 shrink-0">
-                <Badge variant="outline" className="text-[10px] font-mono">{lastAssistantMsg.metricDef.id}</Badge>
-                <span className="font-medium text-zinc-700">{lastAssistantMsg.metricDef.name}</span>
-                <span className="text-zinc-400">|</span>
-                <code className="text-[10px] bg-zinc-100 px-1.5 py-0.5 rounded font-mono truncate">
-                  {lastAssistantMsg.metricDef.formula}
-                </code>
+          <aside
+            ref={visualizationRef}
+            aria-label="Metric visualization"
+            className="hidden w-[45%] flex-col gap-3 overflow-y-auto bg-gradient-to-b from-zinc-50 to-orange-50/20 p-4 lg:flex"
+          >
+            {activeMetric && activeResult && (
+              <div className="flex shrink-0 items-center gap-2 rounded-xl border border-zinc-200/80 bg-white px-3 py-2.5 text-xs text-zinc-500 shadow-sm">
+                <Badge
+                  variant="outline"
+                  className="border-orange-200 bg-orange-50 font-mono text-[10px] text-orange-700"
+                >
+                  {activeMetric.id}
+                </Badge>
+                <span className="font-medium text-zinc-700">
+                  {activeMetric.name}
+                </span>
+                <span aria-hidden="true" className="text-zinc-300">
+                  ·
+                </span>
+                <span className="truncate text-[10px] text-amber-700">
+                  Demo · {activeResult.source.period}
+                </span>
               </div>
             )}
 
-            {/* Chart */}
             <ChartPanel config={activeChart} />
+            {activeResult && <DataTable result={activeResult} />}
 
-            {/* Data Table */}
-            {activeMetricResult && (
-              <DataTable data={activeMetricResult} />
-            )}
-
-            {/* Metric Definition Card */}
-            {lastAssistantMsg?.metricDef && (
-              <div className="bg-white rounded-xl border border-zinc-100 p-4 text-xs shrink-0">
-                <h4 className="font-semibold text-zinc-800 mb-2">Metric Governance</h4>
+            {activeMetric && activeResult && (
+              <section className="shrink-0 rounded-2xl border border-zinc-200/80 bg-white p-4 text-xs shadow-sm">
+                <h2 className="mb-2 font-bold text-zinc-800">
+                  Metric definition
+                </h2>
                 <div className="grid grid-cols-2 gap-2 text-zinc-600">
-                  <div><span className="text-zinc-400">Category:</span> {lastAssistantMsg.metricDef.category}</div>
-                  <div><span className="text-zinc-400">Unit:</span> {lastAssistantMsg.metricDef.unit}</div>
-                  <div><span className="text-zinc-400">Cube:</span> {lastAssistantMsg.metricDef.cube}</div>
-                  <div><span className="text-zinc-400">Dimensions:</span> {lastAssistantMsg.metricDef.dimensions.join(", ")}</div>
+                  <div>
+                    <span className="text-zinc-400">Category:</span>{" "}
+                    {activeMetric.category}
+                  </div>
+                  <div>
+                    <span className="text-zinc-400">Unit:</span>{" "}
+                    {activeMetric.unit}
+                  </div>
+                  <div>
+                    <span className="text-zinc-400">Demo cube:</span>{" "}
+                    {activeMetric.cube}
+                  </div>
+                  <div>
+                    <span className="text-zinc-400">Dimensions:</span>{" "}
+                    {activeMetric.dimensions.join(", ")}
+                  </div>
                 </div>
-                <p className="mt-2 text-zinc-500 leading-relaxed">{lastAssistantMsg.metricDef.description}</p>
-                <div className="mt-2 pt-2 border-t border-zinc-50">
-                  <p className="text-[10px] text-zinc-400">
-                    <svg className="h-3 w-3 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                    Governed by Semantic Layer — single source of truth
-                  </p>
-                </div>
-              </div>
+                <p className="mt-2 leading-relaxed text-zinc-500">
+                  {activeMetric.description}
+                </p>
+                <p className="mt-2 border-t border-zinc-100 pt-2 text-[10px] text-zinc-400">
+                  <ShieldCheck className="mr-1 inline h-3 w-3" />
+                  Defined locally for this prototype; connect a real semantic API
+                  before production use.
+                </p>
+              </section>
             )}
-          </div>
-        </div>
+          </aside>
+        </main>
 
-        {/* ─── Mobile Chart (below chat on small screens) ─── */}
-        <div className="lg:hidden border-t border-zinc-100 bg-white p-3 shrink-0 max-h-[40vh] overflow-y-auto">
-          <ChartPanel config={activeChart} />
-          {activeMetricResult && <DataTable result={activeMetricResult} />}
-        </div>
+        {activeResult && (
+          <section className="max-h-[44vh] shrink-0 space-y-3 overflow-y-auto border-t border-zinc-200 bg-zinc-50 p-3 lg:hidden">
+            <ChartPanel config={activeChart} />
+            <DataTable result={activeResult} />
+          </section>
+        )}
       </div>
     </div>
   );

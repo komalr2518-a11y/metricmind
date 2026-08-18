@@ -1,17 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Layers } from "lucide-react";
-import {
-  METRIC_CATALOG,
-  type MetricDefinition,
-} from "@/lib/metricmind/semantic-layer";
+import { Search, Layers, X } from "lucide-react";
+import { METRIC_CATALOG } from "@/lib/metricmind/catalog";
+import type { MetricDefinition } from "@/lib/metricmind/types";
 
 type MetricCategory = MetricDefinition["category"];
 
 interface Props {
   onSelect?: (id: string) => void;
   activeId?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 const CATEGORY_ORDER: MetricCategory[] = [
@@ -30,7 +30,12 @@ const CATEGORY_COLORS: Record<MetricCategory, string> = {
   Efficiency: "text-amber-600 bg-amber-50 border-amber-100",
 };
 
-export function MetricSidebar({ onSelect, activeId }: Props) {
+export function MetricSidebar({
+  onSelect,
+  activeId,
+  isOpen = false,
+  onClose,
+}: Props) {
   const [query, setQuery] = useState("");
 
   const grouped = useMemo(() => {
@@ -73,21 +78,48 @@ export function MetricSidebar({ onSelect, activeId }: Props) {
   );
 
   return (
-    <aside className="hidden md:flex w-[260px] shrink-0 flex-col border-r border-zinc-100 bg-white">
+    <>
+      {isOpen && (
+        <button
+          type="button"
+          aria-label="Close metric catalog"
+          className="fixed inset-0 z-40 bg-zinc-950/30 backdrop-blur-[1px] lg:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      <aside
+        id="metric-catalog"
+        aria-label="Metric catalog"
+        className={`${
+          isOpen ? "flex" : "hidden"
+        } fixed inset-y-0 left-0 z-50 w-[280px] max-w-[85vw] shrink-0 flex-col border-r border-zinc-200 bg-white shadow-xl lg:static lg:z-auto lg:flex lg:w-[260px] lg:shadow-none`}
+      >
       {/* Header */}
       <div className="px-4 py-3 border-b border-zinc-100">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="h-6 w-6 rounded-md bg-zinc-900 flex items-center justify-center">
-            <Layers className="h-3.5 w-3.5 text-white" />
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-zinc-900">
+              <Layers className="h-3.5 w-3.5 text-white" />
+            </div>
+
+            <h2 className="text-sm font-semibold text-zinc-900">
+              Metric Catalog
+            </h2>
           </div>
 
-          <h2 className="text-sm font-semibold text-zinc-900">
-            Metric Catalog
-          </h2>
+          <button
+            type="button"
+            aria-label="Close metric catalog"
+            className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 lg:hidden"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         <p className="text-[11px] text-zinc-500 leading-relaxed">
-          {METRIC_CATALOG.length} governed metrics · click to ask the agent
+          {METRIC_CATALOG.length} defined demo metrics · select one to explore
         </p>
       </div>
 
@@ -98,6 +130,7 @@ export function MetricSidebar({ onSelect, activeId }: Props) {
 
           <input
             type="text"
+            aria-label="Search metrics"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search metrics..."
@@ -116,7 +149,7 @@ export function MetricSidebar({ onSelect, activeId }: Props) {
       >
         {totalShown === 0 && (
           <div className="text-center text-xs text-zinc-400 py-6">
-            No metrics match "{query}"
+            No metrics match “{query}”
           </div>
         )}
 
@@ -139,8 +172,13 @@ export function MetricSidebar({ onSelect, activeId }: Props) {
 
                   return (
                     <button
+                      type="button"
                       key={metric.id}
-                      onClick={() => onSelect?.(metric.id)}
+                      aria-pressed={isActive}
+                      onClick={() => {
+                        onSelect?.(metric.id);
+                        onClose?.();
+                      }}
                       className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group ${
                         isActive
                           ? "bg-orange-50 border border-orange-200"
@@ -188,10 +226,12 @@ export function MetricSidebar({ onSelect, activeId }: Props) {
       {/* Footer */}
       <div className="px-3 py-2 border-t border-zinc-100 bg-zinc-50/50">
         <p className="text-[10px] text-zinc-500 leading-relaxed">
-          Every metric is governed by the Semantic Layer — one source of truth.
+          Definitions and values are local demo data, ready to be replaced by a
+          production semantic API.
         </p>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 

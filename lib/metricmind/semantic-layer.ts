@@ -1,224 +1,19 @@
-// ═══════════════════════════════════════════════════
-// MetricMind — Semantic Layer: Governed Metric Definitions
-// All business metrics defined as code, decoupled from BI tools
-// ═══════════════════════════════════════════════════
+import { METRIC_CATALOG } from "./catalog";
+import { formatMetricValue } from "./format";
+import type {
+  ChartConfig,
+  MetricDefinition,
+  MetricQuery,
+  MetricResult,
+} from "./types";
 
-export interface MetricDefinition {
-  id: string;
-  name: string;
-  category: "Revenue" | "Profitability" | "Customer" | "Growth" | "Efficiency";
-  formula: string;
-  description: string;
-  unit: string;
-  cube: string;
-  dimensions: string[];
-  compatibleCharts: ("line" | "bar" | "pie" | "heatmap" | "table")[];
-}
-
-export interface MetricQuery {
-  metricId: string;
-  filters?: Record<string, string>;
-  timeRange?: { from: string; to: string };
-  granularity?: "monthly" | "quarterly" | "yearly";
-  dimensions?: string[];
-}
-
-export interface MetricResult {
-  metricId: string;
-  metricName: string;
-  query: MetricQuery;
-  data: Record<string, string | number>[];
-  summary: string;
-  chartConfig: ChartConfig;
-}
-
-export interface ChartConfig {
-  type: "line" | "bar" | "pie" | "heatmap" | "table";
-  title: string;
-  xAxis?: { label: string; data: string[] };
-  yAxis?: { label: string };
-  series: ChartSeries[];
-}
-
-export interface ChartSeries {
-  name: string;
-  data: number[];
-  color?: string;
-}
-
-// ─── Metric Catalog ───
-export const METRIC_CATALOG: MetricDefinition[] = [
-  {
-    id: "total_revenue",
-    name: "Total Revenue",
-    category: "Revenue",
-    formula: "SUM(net_revenue)",
-    description: "Total net revenue after discounts and returns across all regions and products.",
-    unit: "USD",
-    cube: "OrdersCube",
-    dimensions: ["region", "product_category", "customer_tier", "date"],
-    compatibleCharts: ["line", "bar", "table"],
-  },
-  {
-    id: "gross_margin",
-    name: "Gross Margin",
-    category: "Profitability",
-    formula: "(SUM(net_revenue) - SUM(cost_of_goods_sold)) / SUM(net_revenue) * 100",
-    description: "Gross profit margin percentage, calculated as (Revenue - COGS) / Revenue.",
-    unit: "%",
-    cube: "OrdersCube",
-    dimensions: ["region", "product_category", "date"],
-    compatibleCharts: ["line", "bar"],
-  },
-  {
-    id: "net_profit",
-    name: "Net Profit",
-    category: "Profitability",
-    formula: "SUM(net_revenue) - SUM(cost_of_goods_sold) - SUM(operating_expenses)",
-    description: "Net profit after deducting COGS and operating expenses.",
-    unit: "USD",
-    cube: "OrdersCube",
-    dimensions: ["region", "product_category", "date"],
-    compatibleCharts: ["line", "bar", "table"],
-  },
-  {
-    id: "churn_rate",
-    name: "Customer Churn Rate",
-    category: "Customer",
-    formula: "(Customers at Start - Customers at End) / Customers at Start * 100",
-    description: "Percentage of customers lost during the period.",
-    unit: "%",
-    cube: "CustomersCube",
-    dimensions: ["region", "customer_tier", "date"],
-    compatibleCharts: ["line", "bar"],
-  },
-  {
-    id: "nrr",
-    name: "Net Revenue Retention",
-    category: "Growth",
-    formula: "(Starting MRR + Expansion - Contraction - Churn) / Starting MRR * 100",
-    description: "Net revenue retained from existing customers, including expansion and churn.",
-    unit: "%",
-    cube: "CustomersCube",
-    dimensions: ["region", "customer_tier", "date"],
-    compatibleCharts: ["line", "bar"],
-  },
-  {
-    id: "arpu",
-    name: "Average Revenue Per User",
-    category: "Revenue",
-    formula: "SUM(net_revenue) / COUNT(DISTINCT customer_id)",
-    description: "Average revenue generated per unique customer in the period.",
-    unit: "USD",
-    cube: "OrdersCube",
-    dimensions: ["region", "customer_tier", "product_category", "date"],
-    compatibleCharts: ["line", "bar"],
-  },
-  {
-    id: "total_orders",
-    name: "Total Orders",
-    category: "Efficiency",
-    formula: "COUNT(DISTINCT order_id)",
-    description: "Total number of unique orders placed in the period.",
-    unit: "#",
-    cube: "OrdersCube",
-    dimensions: ["region", "product_category", "customer_tier", "date"],
-    compatibleCharts: ["line", "bar", "table"],
-  },
-  {
-    id: "avg_order_value",
-    name: "Average Order Value",
-    category: "Efficiency",
-    formula: "SUM(net_revenue) / COUNT(DISTINCT order_id)",
-    description: "Average revenue per order.",
-    unit: "USD",
-    cube: "OrdersCube",
-    dimensions: ["region", "product_category", "customer_tier", "date"],
-    compatibleCharts: ["line", "bar"],
-  },
-  {
-    id: "customer_count",
-    name: "Active Customers",
-    category: "Customer",
-    formula: "COUNT(DISTINCT customer_id)",
-    description: "Number of unique customers with at least one order in the period.",
-    unit: "#",
-    cube: "CustomersCube",
-    dimensions: ["region", "customer_tier", "date"],
-    compatibleCharts: ["line", "bar", "table"],
-  },
-  {
-    id: "new_customers",
-    name: "New Customers",
-    category: "Growth",
-    formula: "COUNT(DISTINCT CASE WHEN first_order_date IN period THEN customer_id END)",
-    description: "Number of customers who placed their first order in the period.",
-    unit: "#",
-    cube: "CustomersCube",
-    dimensions: ["region", "customer_tier", "date"],
-    compatibleCharts: ["bar", "line"],
-  },
-  {
-    id: "revenue_by_region",
-    name: "Revenue by Region",
-    category: "Revenue",
-    formula: "SUM(net_revenue) GROUP BY region",
-    description: "Total revenue broken down by geographic region.",
-    unit: "USD",
-    cube: "OrdersCube",
-    dimensions: ["region", "date"],
-    compatibleCharts: ["bar", "pie", "table"],
-  },
-  {
-    id: "revenue_by_category",
-    name: "Revenue by Product Category",
-    category: "Revenue",
-    formula: "SUM(net_revenue) GROUP BY product_category",
-    description: "Total revenue broken down by product category.",
-    unit: "USD",
-    cube: "OrdersCube",
-    dimensions: ["product_category", "date"],
-    compatibleCharts: ["bar", "pie", "table"],
-  },
-  {
-    id: "cogs",
-    name: "Cost of Goods Sold",
-    category: "Profitability",
-    formula: "SUM(cost_of_goods_sold)",
-    description: "Total direct costs attributable to the production of goods sold.",
-    unit: "USD",
-    cube: "OrdersCube",
-    dimensions: ["region", "product_category", "date"],
-    compatibleCharts: ["line", "bar", "table"],
-  },
-  {
-    id: "operating_expense_ratio",
-    name: "Operating Expense Ratio",
-    category: "Efficiency",
-    formula: "SUM(operating_expenses) / SUM(net_revenue) * 100",
-    description: "Operating expenses as a percentage of revenue. Lower is more efficient.",
-    unit: "%",
-    cube: "OrdersCube",
-    dimensions: ["region", "date"],
-    compatibleCharts: ["line", "bar"],
-  },
-  {
-    id: "customer_ltv",
-    name: "Customer Lifetime Value",
-    category: "Customer",
-    formula: "ARPU * Average Customer Lifespan (months)",
-    description: "Estimated total revenue a customer generates over their entire relationship.",
-    unit: "USD",
-    cube: "CustomersCube",
-    dimensions: ["region", "customer_tier", "date"],
-    compatibleCharts: ["bar", "table"],
-  },
-];
+const DEMO_SOURCE = {
+  kind: "demo" as const,
+  label: "Deterministic local demo dataset",
+  period: "FY 2025",
+};
 
 // ─── Mock Data Generator ───
-const REGIONS = ["North America", "Europe", "Asia-Pacific", "Latin America"];
-const CATEGORIES = ["Electronics", "SaaS", "Consulting", "Hardware"];
-const TIERS = ["Enterprise", "Mid-Market", "SMB"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const QUARTERS = ["Q1", "Q2", "Q3", "Q4"];
 
@@ -358,6 +153,41 @@ const DATA: Record<string, { monthly: number[]; quarterly: number[]; regional: R
     byCategory: { Electronics: 4800, SaaS: 7200, Consulting: 3500, Hardware: 1800 },
     byTier: { Enterprise: 18500, "Mid-Market": 4800, SMB: 1200 },
   },
+  mrr: {
+    monthly: [820000, 845000, 872000, 898000, 925000, 954000, 986000, 1015000, 1048000, 1083000, 1119000, 1158000],
+    quarterly: [845000, 925000, 1015000, 1158000],
+    regional: { "North America": 542000, "Europe": 318000, "Asia-Pacific": 221000, "Latin America": 77000 },
+    byCategory: { Electronics: 214000, SaaS: 668000, Consulting: 196000, Hardware: 80000 },
+    byTier: { Enterprise: 638000, "Mid-Market": 356000, SMB: 164000 },
+  },
+  ebitda_margin: {
+    monthly: [24.8, 25.1, 25.6, 26.2, 25.9, 26.8, 27.1, 27.6, 28.2, 28.7, 29.1, 29.8],
+    quarterly: [25.2, 26.3, 27.6, 29.2],
+    regional: { "North America": 31.4, "Europe": 27.2, "Asia-Pacific": 25.8, "Latin America": 19.6 },
+    byCategory: { Electronics: 22.6, SaaS: 41.8, Consulting: 30.4, Hardware: 16.9 },
+    byTier: { Enterprise: 34.2, "Mid-Market": 27.1, SMB: 20.5 },
+  },
+  cac: {
+    monthly: [482, 475, 468, 461, 455, 447, 438, 431, 423, 416, 409, 398],
+    quarterly: [475, 456, 431, 408],
+    regional: { "North America": 455, "Europe": 418, "Asia-Pacific": 362, "Latin America": 295 },
+    byCategory: { Electronics: 428, SaaS: 512, Consulting: 385, Hardware: 318 },
+    byTier: { Enterprise: 1450, "Mid-Market": 565, SMB: 182 },
+  },
+  conversion_rate: {
+    monthly: [3.4, 3.6, 3.7, 3.9, 4.1, 4.0, 4.3, 4.5, 4.7, 4.8, 5.0, 5.2],
+    quarterly: [3.6, 4.0, 4.5, 5.0],
+    regional: { "North America": 5.6, "Europe": 4.9, "Asia-Pacific": 4.3, "Latin America": 3.8 },
+    byCategory: { Electronics: 4.7, SaaS: 6.2, Consulting: 3.9, Hardware: 3.4 },
+    byTier: { Enterprise: 6.8, "Mid-Market": 5.1, SMB: 4.0 },
+  },
+  refund_rate: {
+    monthly: [4.8, 4.6, 4.5, 4.2, 4.1, 3.9, 3.8, 3.7, 3.5, 3.4, 3.2, 3.1],
+    quarterly: [4.6, 4.1, 3.7, 3.2],
+    regional: { "North America": 2.8, "Europe": 3.2, "Asia-Pacific": 3.7, "Latin America": 4.5 },
+    byCategory: { Electronics: 3.8, SaaS: 1.2, Consulting: 2.1, Hardware: 5.4 },
+    byTier: { Enterprise: 2.0, "Mid-Market": 3.1, SMB: 4.4 },
+  },
 };
 
 // ─── Query Executor ───
@@ -370,6 +200,13 @@ export function executeMetricQuery(query: MetricQuery): MetricResult {
 
   const granularity = query.granularity || "monthly";
   const dimension = query.dimensions?.[0];
+
+  if (dimension && !metric.dimensions.includes(dimension)) {
+    throw new Error(
+      `${metric.name} cannot be grouped by ${dimension.replaceAll("_", " ")}.`
+    );
+  }
+
   const timeData = granularity === "quarterly" ? d.quarterly : d.monthly;
   const timeLabels = granularity === "quarterly" ? QUARTERS : MONTHS;
 
@@ -379,28 +216,52 @@ export function executeMetricQuery(query: MetricQuery): MetricResult {
   let summary: string;
 
   if (dimension === "region" || query.metricId === "revenue_by_region") {
+    const regionalEntries = Object.entries(d.regional);
+    const top = regionalEntries.reduce((best, entry) =>
+      entry[1] > best[1] ? entry : best
+    );
+
     chartConfig = {
       type: "bar",
-      title: `${metric.name} by Region (${granularity === "quarterly" ? "FY 2025" : "FY 2025"})`,
+      title:
+        query.metricId === "revenue_by_region"
+          ? `${metric.name} (FY 2025)`
+          : `${metric.name} by Region (FY 2025)`,
       series: [{ name: metric.name, data: Object.values(d.regional), color: "#D4875A" }],
       xAxis: { label: "Region", data: Object.keys(d.regional) },
       yAxis: { label: metric.unit },
     };
-    data = Object.entries(d.regional).map(([k, v]) => ({ region: k, value: v }));
-    summary = `${metric.name} is highest in ${Object.keys(d.regional).reduce((a, b) => d.regional[a] > d.regional[b] ? a : b)} at $${Object.values(d.regional).reduce((a, b) => Math.max(a, b)).toLocaleString()} ${metric.unit}.`;
+    data = regionalEntries.map(([region, value]) => ({ region, value }));
+    summary = `${metric.name} is highest in ${top[0]} at ${formatMetricValue(
+      top[1],
+      metric.unit
+    )}.`;
   } else if (dimension === "product_category" || query.metricId === "revenue_by_category") {
     const cats = Object.entries(d.byCategory);
     chartConfig = {
       type: "pie",
-      title: `${metric.name} by Category`,
+      title:
+        query.metricId === "revenue_by_category"
+          ? metric.name
+          : `${metric.name} by Product Category`,
       series: [{ name: metric.name, data: cats.map(([, v]) => v), color: "#D4875A" }],
       xAxis: { label: "Category", data: cats.map(([k]) => k) },
+      yAxis: { label: metric.unit },
     };
     data = cats.map(([k, v]) => ({ category: k, value: v }));
     const total = cats.reduce((s, [, v]) => s + v, 0);
     const top = cats.reduce((a, b) => b[1] > a[1] ? b : a);
-    summary = `${top[0]} leads with $${top[1].toLocaleString()} (${((top[1] / total) * 100).toFixed(1)}% of total ${metric.name}).`;
+    const share = total === 0 ? 0 : (top[1] / total) * 100;
+    summary = `${top[0]} leads with ${formatMetricValue(
+      top[1],
+      metric.unit
+    )} (${share.toFixed(1)}% of the displayed total).`;
   } else if (dimension === "customer_tier") {
+    const tierEntries = Object.entries(d.byTier);
+    const top = tierEntries.reduce((best, entry) =>
+      entry[1] > best[1] ? entry : best
+    );
+
     chartConfig = {
       type: "bar",
       title: `${metric.name} by Customer Tier`,
@@ -408,14 +269,17 @@ export function executeMetricQuery(query: MetricQuery): MetricResult {
       xAxis: { label: "Tier", data: Object.keys(d.byTier) },
       yAxis: { label: metric.unit },
     };
-    data = Object.entries(d.byTier).map(([k, v]) => ({ tier: k, value: v }));
-    summary = `Enterprise tier contributes the highest ${metric.name.toLowerCase()} at ${Object.values(d.byTier)[0].toLocaleString()} ${metric.unit}.`;
+    data = tierEntries.map(([tier, value]) => ({ tier, value }));
+    summary = `${top[0]} has the highest ${metric.name.toLowerCase()} at ${formatMetricValue(
+      top[1],
+      metric.unit
+    )}.`;
   } else {
     // Time series (default)
     const trend = timeData[timeData.length - 1] - timeData[0];
-    const trendPct = ((trend / timeData[0]) * 100).toFixed(1);
-    const trendDir = trend > 0 ? "increased" : "decreased";
-    const avg = (timeData.reduce((s, v) => s + v, 0) / timeData.length).toFixed(0);
+    const trendPct = timeData[0] === 0 ? null : (trend / timeData[0]) * 100;
+    const trendDir = trend > 0 ? "increased" : trend < 0 ? "decreased" : "was flat";
+    const avg = timeData.reduce((s, v) => s + v, 0) / timeData.length;
     const max = Math.max(...timeData);
     const maxIdx = timeData.indexOf(max);
 
@@ -427,10 +291,44 @@ export function executeMetricQuery(query: MetricQuery): MetricResult {
       yAxis: { label: metric.unit },
     };
     data = timeLabels.map((label, i) => ({ period: label, value: timeData[i] }));
-    summary = `${metric.name} has ${trendDir} by ${Math.abs(parseFloat(trendPct))}% over FY 2025, from ${timeData[0].toLocaleString()} to ${timeData[timeData.length - 1].toLocaleString()} ${metric.unit}. Average: ${Number(avg).toLocaleString()} ${metric.unit}. Peak: ${max.toLocaleString()} ${metric.unit} in ${timeLabels[maxIdx]}.`;
+    const changeSummary =
+      trendPct === null
+        ? `${metric.name} moved from a zero baseline to ${formatMetricValue(
+            timeData[timeData.length - 1],
+            metric.unit
+          )}`
+        : trend === 0
+          ? `${metric.name} was flat at ${formatMetricValue(
+              timeData[0],
+              metric.unit
+            )}`
+          : `${metric.name} ${trendDir} by ${Math.abs(trendPct).toFixed(
+              1
+            )}%, from ${formatMetricValue(
+              timeData[0],
+              metric.unit
+            )} to ${formatMetricValue(
+              timeData[timeData.length - 1],
+              metric.unit
+            )}`;
+
+    summary = `${changeSummary} over FY 2025. Average: ${formatMetricValue(
+      avg,
+      metric.unit
+    )}. Peak: ${formatMetricValue(max, metric.unit)} in ${timeLabels[maxIdx]}.`;
   }
 
-  return { metricId: query.metricId, metricName: metric.name, query, data, summary, chartConfig };
+  return {
+    metricId: query.metricId,
+    metricName: metric.name,
+    unit: metric.unit,
+    summaryOperation: metric.summaryOperation,
+    source: DEMO_SOURCE,
+    query,
+    data,
+    summary,
+    chartConfig,
+  };
 }
 
 // ─── Search metrics by keyword ───
@@ -444,3 +342,11 @@ export function searchMetrics(query: string): MetricDefinition[] {
       m.id.includes(q)
   );
 }
+
+export { METRIC_CATALOG } from "./catalog";
+export type {
+  ChartConfig,
+  MetricDefinition,
+  MetricQuery,
+  MetricResult,
+} from "./types";
